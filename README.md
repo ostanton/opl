@@ -59,6 +59,12 @@ p: Point = {
 Point.x; // error!
 p.x = 5; // OK
 
+// Only fields which come from a type scope are mutable outside a value scope
+maths := {
+    pi := 3.1415;
+};
+maths.pi = 5; // error! pi is const!
+
 // Type scopes can have other type scopes defined within
 Box: {
     pos: Point = {}; // = {} is required otherwise "pos" is a type scope instead of a value scope name
