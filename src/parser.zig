@@ -24,13 +24,13 @@ const NodeType = enum {
     Assignment,
 };
 
-const AstNode = struct {
+pub const AstNode = struct {
     type: NodeType,
     value: []const u8,
     children: std.ArrayList(AstNode),
     allocator: std.mem.Allocator,
 
-    pub fn init(allocator: std.mem.Allocator, nodeType: NodeType, value: []const u8) @This() {
+    pub fn init(allocator: std.mem.Allocator, nodeType: NodeType, value: []const u8) AstNode {
         return .{
             .type = nodeType,
             .value = value,
@@ -39,18 +39,18 @@ const AstNode = struct {
         };
     }
 
-    pub fn deinit(self: *@This()) void {
+    pub fn deinit(self: *AstNode) void {
         for (self.children.items) |*child| {
             child.deinit();
         }
         self.children.deinit();
     }
 
-    pub fn addChild(self: *@This(), child: AstNode) ParseError!void {
+    pub fn addChild(self: *AstNode, child: AstNode) ParseError!void {
         self.children.append(child) catch return ParseError.OutOfMemory;
     }
 
-    pub fn printTree(self: @This(), prefix: []const u8, isLast: bool) !void {
+    pub fn printTree(self: AstNode, prefix: []const u8, isLast: bool) !void {
         std.debug.print("{s}", .{prefix});
         std.debug.print("{s}", .{if (isLast) "^-- " else "|-- "});
         if (std.enums.tagName(NodeType, self.type)) |s| {

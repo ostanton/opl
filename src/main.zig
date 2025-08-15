@@ -1,6 +1,7 @@
 const std = @import("std");
 const Lexer = @import("lexer.zig");
 const Parser = @import("parser.zig");
+const Semantics = @import("semantics.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -47,9 +48,6 @@ pub fn main() !void {
         return;
     }
 
-    std.debug.print("Source relative path: '{s}'\n", .{srcPath});
-    std.debug.print("Output relative path: '{s}'\n", .{outPath});
-
     const cwd = std.fs.cwd();
     const file = cwd.openFile(srcPath, .{}) catch |err| switch (err) {
         error.FileNotFound => {
@@ -65,11 +63,43 @@ pub fn main() !void {
     defer gpa.allocator().free(buffer);
     _ = try file.readAll(buffer);
 
+    std.debug.print("--- COMPILING ---\n", .{});
+    std.debug.print("Source relative path: '{s}'\n", .{srcPath});
+
+    std.debug.print("\n", .{});
+
+    std.debug.print("--- LEXING ---\n", .{});
     var lexer: Lexer = try .init(buffer);
-    std.debug.print("Lexer finished\n", .{});
+    std.debug.print("--- LEXING FINISHED ---\n", .{});
+
+    std.debug.print("\n", .{});
+
+    std.debug.print("--- PARSING ---\n", .{});
     var parser: Parser = .init(gpa.allocator(), &lexer);
-    var rootNode = try parser.parse();
+    var rootNode = parser.parse() catch |err| {
+        std.debug.print("Parse error: {}\n", .{err});
+        return;
+    };
     defer rootNode.deinit();
-    std.debug.print("Parser finished\n", .{});
-    try rootNode.printTree("", true);
+    std.debug.print("--- PARSING FINISHED ---\n", .{});
+
+    std.debug.print("\n", .{});
+
+    std.debug.print("AST:\n", .{});
+    rootNode.printTree("", true) catch {};
+
+    std.debug.print("\n", .{});
+
+    std.debug.print("--- SEMANTIC ANALYSIS ---\n", .{});
+    var semanticAnalyser: Semantics.Analyser = .init(gpa.allocator());
+    defer semanticAnalyser.deinit();
+    semanticAnalyser.analyse(&rootNode) catch |err| {
+        std.debug.print("Semantic analysis error: {}\n", .{err});
+        return;
+    };
+    std.debug.print("--- SEMANTIC ANALYSIS FINISHED ---\n", .{});
+
+    std.debug.print("\n", .{});
+
+    std.debug.print("--- COMPILATION FINISHED ---\n", .{});
 }
