@@ -1,0 +1,15 @@
+// Defining a Point structure and using it in a variable
+
+Point: {
+    x: f32 = 0;
+    y: f32 = 0;
+};
+
+p: Point = {
+    x = 50;
+    y = x * 2;
+};
+
+p.x = 100;
+
+result := 0;

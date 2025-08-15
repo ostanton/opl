@@ -58,6 +58,10 @@ pub const TokenType = enum {
     // Other
     EoF,
     Invalid,
+
+    pub fn isType(self: TokenType) bool {
+        return @intFromEnum(self) >= @intFromEnum(TokenType.U8) and @intFromEnum(self) <= @intFromEnum(TokenType.Scope);
+    }
 };
 
 pub const Token = struct {

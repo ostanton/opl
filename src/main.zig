@@ -5,6 +5,7 @@ const Parser = @import("parser.zig");
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
+
     var args = try std.process.ArgIterator.initWithAllocator(gpa.allocator());
     defer args.deinit();
 
@@ -46,23 +47,29 @@ pub fn main() !void {
         return;
     }
 
-    std.debug.print("Source path: '{s}'\n", .{srcPath});
-    std.debug.print("Output path: '{s}'\n", .{outPath});
+    std.debug.print("Source relative path: '{s}'\n", .{srcPath});
+    std.debug.print("Output relative path: '{s}'\n", .{outPath});
 
-    // TODO - open source file instead of literal text
-    var lexer: Lexer = try .init(
-        \\Point: {
-        \\    x: f32 = 5;
-        \\    y: f32 = 4;
-        \\/* HELLO */};
-        \\p: Point = {
-        \\    x = 2; // x position!
-        \\    y = 10;
-        \\};
-    );
+    const cwd = std.fs.cwd();
+    const file = cwd.openFile(srcPath, .{}) catch |err| switch (err) {
+        error.FileNotFound => {
+            std.debug.print("Failed to find source file\n", .{});
+            return;
+        },
+        else => return err,
+    };
+    defer file.close();
+
+    const fileStat = try file.stat();
+    const buffer = try gpa.allocator().alloc(u8, @intCast(fileStat.size));
+    defer gpa.allocator().free(buffer);
+    _ = try file.readAll(buffer);
+
+    var lexer: Lexer = try .init(buffer);
     std.debug.print("Lexer finished\n", .{});
-    var parser: Parser = .init(&lexer);
-    const rootNode = parser.parse();
+    var parser: Parser = .init(gpa.allocator(), &lexer);
+    var rootNode = try parser.parse();
+    defer rootNode.deinit();
     std.debug.print("Parser finished\n", .{});
     try rootNode.printTree("", true);
 }
