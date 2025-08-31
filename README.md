@@ -11,7 +11,8 @@ f32, f64, bool, void
 
 // Names can be either a value (fundamental type), or a value scope (lambda)
 a: f32 = 5; // value
-b := () {}; // empty lambda
+b := () {}; // empty lambda, type of "scope"
+// b: scope = () {};
 
 // Anonymous lambda
 () {};
@@ -30,11 +31,12 @@ my_name := {};
 my_name;
 
 // Called lambdas can have their local names accesed
-num: f32 = { x: f32 = 5; }().x;
+num: f32 = () { x: f32 = 5; } ().x;
+// num: f32 = { x: f32 = 5; }.x;
 
 // Named lambdas therefore support this
 length := (x: f32, y: f32) {
-    result := std.sqrt(x * x, y * y);
+    result := std.sqrt(x * x, y * y).result;
 };
 len := length(2, 5).result;
 
@@ -54,6 +56,16 @@ p: Point = {
     x = 55; // x and y are available from the Point type scope
     y = x * 2;
 };
+
+// Note that type scopes cannot have parameters
+Point: () {}; // error!
+
+// It's possible they could in the future for compile-time things, like Zig's functions
+Point: (T: type) { // no idea what the "type" would be here
+    x: T = 0;
+    y: T = 0;
+};
+p: Point(f32) = {};
 
 // Type scopes cannot have their local names accessed like value scopes allow
 Point.x; // error!
@@ -86,4 +98,19 @@ b: Box = {
     // could do value scope initialisation - size = {w = 24; h = 24;};
 };
 br := b.bottom_right.result; // br == Point {x = 24; y = 24;};
+
+// Taking a lambda as a function input
+func: scope = (pred: scope) {
+    if (pred()) {} // etc.
+};
+// There is no signature for the scope parameter, which leads to unknown signatures if not documented
+// Not sure how this would be solved, or if it can. Named scopes can equal anything, a signature is not part of the type!
+f: scope = (x: f32) {result := x * 2;};
+f(5); // == 10
+f = {};
+f(); // nothing
+/**
+ * I don't think this is much of a problem though. Scopes already have pretty hidden names that the user
+ * is expected to know (like the typical "result"), so this isn't hugely different. Just a quirk of the language.
+ */
 ```
