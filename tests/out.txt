@@ -1,0 +1,50 @@
+^-- Program
+    |-- Statement
+    |   ^-- Declaration
+    |       |-- Identifier: "Point"
+    |       ^-- TypeScope
+    |           |-- Statement
+    |           |   ^-- Declaration
+    |           |       |-- Identifier: "x"
+    |           |       |-- Type: "f32"
+    |           |       ^-- Number: "0"
+    |           ^-- Statement
+    |               ^-- Declaration
+    |                   |-- Identifier: "y"
+    |                   |-- Type: "f32"
+    |                   ^-- Number: "0"
+    |-- Statement
+    |   ^-- Declaration
+    |       |-- Identifier: "p"
+    |       |-- Type: "Point"
+    |       ^-- BinaryExpr: "-"
+    |           |-- BinaryExpr: "-"
+    |           |   |-- BinaryExpr: "+"
+    |           |   |   |-- Number: "1"
+    |           |   |   ^-- BinaryExpr: "/"
+    |           |   |       |-- UnaryExpr: "-"
+    |           |   |       |   ^-- Number: "5"
+    |           |   |       ^-- Number: "3"
+    |           |   ^-- BinaryExpr: "*"
+    |           |       |-- Number: "2"
+    |           |       ^-- UnaryExpr: "-"
+    |           |           ^-- Number: "5"
+    |           ^-- UnaryExpr: "-"
+    |               ^-- Number: "4"
+    |-- Statement
+    |   ^-- Declaration
+    |       |-- Identifier: "p"
+    |       ^-- Type: "Point"
+    |-- Statement
+    |   ^-- Assignment
+    |       |-- LocalAccess
+    |       |   |-- LocalAccess
+    |       |   |   |-- Identifier: "p"
+    |       |   |   ^-- Identifier: "x"
+    |       |   ^-- Identifier: "y"
+    |       ^-- Number: "100"
+    ^-- Statement
+        ^-- Declaration
+            |-- Identifier: "result"
+            |-- Type: "u8"
+            ^-- Number: "0"

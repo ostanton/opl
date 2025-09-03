@@ -5,11 +5,14 @@ Point: {
     y: f32 = 0;
 };
 
-p: Point = {
-    x = 50;
-    y = x * 2;
-};
+p: Point = 1 + -5 / 3 - 2 * -5 - -4;
 
-p.x = 100;
+// value scopes are not implemented yet!
+p: Point;// = {
+    //x = 50;
+    //y = x * 2;
+//};
 
-result := 0;
+p.x.y = 100;
+
+result: u8 = 0;

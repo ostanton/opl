@@ -30,11 +30,11 @@ pub const AstNode = struct {
     children: std.ArrayList(AstNode),
     allocator: std.mem.Allocator,
 
-    pub fn init(allocator: std.mem.Allocator, nodeType: NodeType, value: []const u8) AstNode {
+    pub fn init(allocator: std.mem.Allocator, nodeType: NodeType, value: []const u8) !AstNode {
         return .{
             .type = nodeType,
             .value = value,
-            .children = std.ArrayList(AstNode).init(allocator),
+            .children = try std.ArrayList(AstNode).initCapacity(allocator, 1),
             .allocator = allocator,
         };
     }
@@ -47,7 +47,7 @@ pub const AstNode = struct {
     }
 
     pub fn addChild(self: *AstNode, child: AstNode) ParseError!void {
-        self.children.append(child) catch return ParseError.OutOfMemory;
+        self.children.append(self.allocator, child) catch return ParseError.OutOfMemory;
     }
 
     pub fn printTree(self: AstNode, prefix: []const u8, isLast: bool) !void {
@@ -72,6 +72,47 @@ pub const AstNode = struct {
             defer self.allocator.free(newPrefix);
 
             try child.printTree(newPrefix, i == self.children.items.len - 1);
+        }
+    }
+
+    pub fn toString(self: AstNode) ![]u8 {
+        var result = try std.ArrayList(u8).initCapacity(self.allocator, 1);
+        try self.toStringHelper(&result, "", true);
+        return result.toOwnedSlice(self.allocator);
+    }
+
+    fn toStringHelper(
+        self: AstNode,
+        result: *std.ArrayList(u8),
+        prefix: []const u8,
+        isLast: bool,
+    ) !void {
+        try result.appendSlice(self.allocator, prefix);
+        try result.appendSlice(self.allocator, if (isLast) "^-- " else "|-- ");
+        if (std.enums.tagName(NodeType, self.type)) |s| {
+            try result.appendSlice(self.allocator, s);
+        }
+
+        if (self.value.len > 0) {
+            try result.appendSlice(self.allocator, ": \"");
+            try result.appendSlice(self.allocator, self.value);
+            try result.appendSlice(self.allocator, "\"");
+        }
+
+        try result.append(self.allocator, '\"');
+
+        for (self.children.items, 0..) |child, i| {
+            const newPrefix = try std.mem.concat(
+                self.allocator,
+                u8,
+                &.{ prefix, if (isLast) "    " else "|   " },
+            );
+            defer self.allocator.free(newPrefix);
+            try child.toStringHelper(
+                result,
+                newPrefix,
+                i == self.children.items.len - 1,
+            );
         }
     }
 };
@@ -140,7 +181,7 @@ fn synchronise(self: *Self) void {
 }
 
 fn parseProgram(self: *Self) ParseError!AstNode {
-    var program: AstNode = .init(self.allocator, .Program, "");
+    var program: AstNode = try .init(self.allocator, .Program, "");
 
     while (!self.check(.EoF)) {
         if (self.parseStatement()) |statement| {
@@ -155,7 +196,7 @@ fn parseProgram(self: *Self) ParseError!AstNode {
 }
 
 fn parseStatement(self: *Self) ParseError!AstNode {
-    var statement: AstNode = .init(self.allocator, .Statement, "");
+    var statement: AstNode = try .init(self.allocator, .Statement, "");
     // TODO - check keywords - TokenType.For etc.
     if (self.check(.Identifier)) {
         const identifier = try self.parseIdentifier();
@@ -184,13 +225,13 @@ fn parseIdentifier(self: *Self) ParseError!AstNode {
         return ParseError.UnexpectedToken;
     }
 
-    const identifier: AstNode = .init(self.allocator, .Identifier, self.currentToken.value);
+    const identifier: AstNode = try .init(self.allocator, .Identifier, self.currentToken.value);
     self.advance();
     return identifier;
 }
 
 fn parseDeclaration(self: *Self, identifier: AstNode) !AstNode {
-    var declaration: AstNode = .init(self.allocator, .Declaration, "");
+    var declaration: AstNode = try .init(self.allocator, .Declaration, "");
     try declaration.addChild(identifier);
 
     try self.expect(.Colon);
@@ -213,7 +254,7 @@ fn parseDeclaration(self: *Self, identifier: AstNode) !AstNode {
 }
 
 fn parseAssignment(self: *Self, identifier: AstNode) ParseError!AstNode {
-    var assignment: AstNode = .init(self.allocator, .Assignment, "");
+    var assignment: AstNode = try .init(self.allocator, .Assignment, "");
 
     var left = identifier;
     while (self.check(.Dot)) {
@@ -236,7 +277,7 @@ fn parseAssignment(self: *Self, identifier: AstNode) ParseError!AstNode {
 
 fn parseType(self: *Self) ParseError!AstNode {
     if (self.check(.Identifier) or self.currentToken.type.isType()) {
-        const typeIdentifier: AstNode = .init(self.allocator, .Type, self.currentToken.value);
+        const typeIdentifier: AstNode = try .init(self.allocator, .Type, self.currentToken.value);
         self.advance();
         return typeIdentifier;
     } else if (self.check(.LeftBrace)) {
@@ -247,7 +288,7 @@ fn parseType(self: *Self) ParseError!AstNode {
 }
 
 fn parseTypeScope(self: *Self) ParseError!AstNode {
-    var typeScope: AstNode = .init(self.allocator, .TypeScope, "");
+    var typeScope: AstNode = try .init(self.allocator, .TypeScope, "");
 
     try self.expect(.LeftBrace);
 
@@ -271,7 +312,7 @@ fn parseExpressionFromIdentifier(self: *Self, identifier: AstNode) ParseError!As
         if (self.check(.Dot)) {
             self.advance();
             const member = try self.parseIdentifier();
-            var memberAccess: AstNode = .init(self.allocator, .MemberAccess, "");
+            var memberAccess: AstNode = try .init(self.allocator, .MemberAccess, "");
             try memberAccess.addChild(expression);
             try memberAccess.addChild(member);
             expression = memberAccess;
@@ -299,7 +340,7 @@ fn parseBinaryExpression(self: *Self, minPrec: u8) ParseError!AstNode {
 
         const right = try self.parseBinaryExpression(prec + 1);
 
-        var binaryOp: AstNode = .init(self.allocator, .BinaryOp, op);
+        var binaryOp: AstNode = try .init(self.allocator, .BinaryOp, op);
         try binaryOp.addChild(left);
         try binaryOp.addChild(right);
         left = binaryOp;
@@ -322,7 +363,7 @@ fn parseUnaryExpression(self: *Self) ParseError!AstNode {
         self.advance();
         const operand = try self.parseUnaryExpression();
 
-        var unaryOp: AstNode = .init(self.allocator, .UnaryOp, op);
+        var unaryOp: AstNode = try .init(self.allocator, .UnaryOp, op);
         try unaryOp.addChild(operand);
         return unaryOp;
     }
@@ -332,7 +373,7 @@ fn parseUnaryExpression(self: *Self) ParseError!AstNode {
 
 fn parsePrimaryExpression(self: *Self) ParseError!AstNode {
     if (self.check(.Number)) {
-        const number: AstNode = .init(self.allocator, .Number, self.currentToken.value);
+        const number: AstNode = try .init(self.allocator, .Number, self.currentToken.value);
         self.advance();
         return number;
     } else if (self.check(.Identifier)) {
@@ -349,7 +390,7 @@ fn parsePrimaryExpression(self: *Self) ParseError!AstNode {
 }
 
 fn parseValueScope(self: *Self) ParseError!AstNode {
-    var valueScope: AstNode = .init(self.allocator, .ValueScope, "");
+    var valueScope: AstNode = try .init(self.allocator, .ValueScope, "");
 
     try self.expect(.LeftBrace);
 
@@ -377,7 +418,7 @@ fn parseParameterisedExpressionOrLambda(self: *Self) ParseError!AstNode {
         if (self.check(.LeftBrace)) {
             return try self.parseLambdaBody();
         } else {
-            return AstNode.init(self.allocator, .Expression, "");
+            return try AstNode.init(self.allocator, .Expression, "");
         }
     }
 
@@ -402,7 +443,7 @@ fn looksLikeParameterList(self: Self) bool {
 }
 
 fn parseParameterList(self: *Self) ParseError!AstNode {
-    var parameterList: AstNode = .init(self.allocator, .ParameterList, "");
+    var parameterList: AstNode = try .init(self.allocator, .ParameterList, "");
 
     while (!self.check(.RightBracket) and !self.check(.EoF)) {
         const parameter = try self.parseParameter();
@@ -417,7 +458,7 @@ fn parseParameterList(self: *Self) ParseError!AstNode {
 }
 
 fn parseParameter(self: *Self) ParseError!AstNode {
-    var parameter: AstNode = .init(self.allocator, .Parameter, "");
+    var parameter: AstNode = try .init(self.allocator, .Parameter, "");
 
     const identifier = try self.parseIdentifier();
     try parameter.addChild(identifier);
@@ -435,7 +476,7 @@ fn parseLambdaBody(self: *Self) ParseError!AstNode {
 }
 
 fn parseFunctionCall(self: *Self, function: AstNode) ParseError!AstNode {
-    var call: AstNode = .init(self.allocator, .FunctionCall, "");
+    var call: AstNode = try .init(self.allocator, .FunctionCall, "");
     try call.addChild(function);
 
     try self.expect(.LeftBracket);
