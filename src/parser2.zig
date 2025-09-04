@@ -1,8 +1,7 @@
 const std = @import("std");
-const Lexer = @import("lexer.zig");
+const Lexer = @import("lexer2.zig");
 
-lexer: *Lexer,
-current_token: Lexer.Token,
+lexer: Lexer,
 
 const NodeType = enum {
     Program,
@@ -11,6 +10,7 @@ const NodeType = enum {
     Declaration,
     Assignment,
     ScopeCall,
+    CallParameterList,
     Parameter,
     ParameterList,
     LocalAccess,
@@ -101,20 +101,27 @@ const ParseError = error{
 
 const Self = @This();
 
-pub fn init(lexer: *Lexer) Self {
+pub fn init(allocator: std.mem.Allocator, input: []const u8) !Self {
     return .{
-        .lexer = lexer,
-        .current_token = lexer.nextToken(),
+        .lexer = try .init(allocator, input),
     };
+}
+
+pub fn deinit() void {
+    Lexer.deinit();
 }
 
 pub fn parse(self: *Self, allocator: std.mem.Allocator) !AstNode {
     return try self.parseProgram(allocator);
 }
 
+fn currentToken(self: Self) Lexer.Token {
+    return self.lexer.peekAt(0);
+}
+
 /// Consumes the next token into the current token
 fn advance(self: *Self) void {
-    self.current_token = self.lexer.nextToken();
+    _ = self.lexer.advance();
 }
 
 /// Checks if the token type is the current token, and advances if so
@@ -132,22 +139,26 @@ fn expect(self: *Self, token_type: Lexer.TokenType) ParseError!void {
     if (!self.match(token_type)) {
         std.debug.print("Expected {s}, found {s} at line {}\n", .{
             @tagName(token_type),
-            @tagName(self.current_token.type),
-            self.current_token.line,
+            @tagName(self.currentToken().type),
+            self.currentToken().line,
         });
         return ParseError.UnexpectedToken;
     }
 }
 
+fn checkAt(self: Self, token_type: Lexer.TokenType, offset: usize) bool {
+    return self.lexer.peekAt(offset).type == token_type;
+}
+
 /// Checks if the token type is the current token
 fn check(self: Self, token_type: Lexer.TokenType) bool {
-    return self.current_token.type == token_type;
+    return self.checkAt(token_type, 0);
 }
 
 /// Skips invalid tokens until it reaches a valid new starting point.
 /// Allows the parser to continue parsing after an error
 fn synchronise(self: *Self) void {
-    while (!self.check(.EoF)) {
+    while (!self.check(.EoF) and !self.check(.Invalid)) {
         // Recover into the next statement
         if (self.check(.Semicolon)) {
             self.advance();
@@ -166,7 +177,7 @@ fn parseProgram(self: *Self, allocator: std.mem.Allocator) !AstNode {
     // The top-level node in the tree
     var program: AstNode = .init(.Program, "");
 
-    while (!self.check(.EoF)) {
+    while (!self.check(.EoF) and !self.check(.Invalid)) {
         if (self.parseStatement(allocator)) |statement| {
             try program.addChild(allocator, statement);
         } else |err| {
@@ -191,8 +202,18 @@ fn parseStatement(self: *Self, allocator: std.mem.Allocator) anyerror!AstNode {
 
     // TODO - check for keyword statements (e.g. "if", "for", etc.)
 
+    if (self.check(.If)) {}
+
+    if (self.check(.For)) {}
+
     // Statements should have a valid expression at least
-    var expression = try self.parseExpression(allocator);
+    std.debug.print("Parsing statement '{s}' of type '{s}' on line {} in column {}\n", .{
+        self.currentToken().value,
+        @tagName(self.currentToken().type),
+        self.currentToken().line,
+        self.currentToken().column,
+    });
+    const expression = try self.parseExpression(allocator);
 
     if (self.check(.Colon)) {
         // This is a declaration (ident : [type] = ... ;)
@@ -203,9 +224,8 @@ fn parseStatement(self: *Self, allocator: std.mem.Allocator) anyerror!AstNode {
         const assignment = try self.parseAssignment(allocator, expression);
         try statement.addChild(allocator, assignment);
     } else {
-        expression.deinit(allocator);
-        std.debug.print("Invalid token '{s}'\n", .{self.current_token.value});
-        return ParseError.InvalidSyntax;
+        // Just a simple expression statement
+        try statement.addChild(allocator, expression);
     }
 
     // Statements must end with a semicolon
@@ -223,6 +243,7 @@ fn parseStatement(self: *Self, allocator: std.mem.Allocator) anyerror!AstNode {
 /// ## Type alias
 /// `ident : {[statments]} ;`
 fn parseDeclaration(self: *Self, allocator: std.mem.Allocator, identifier: AstNode) !AstNode {
+    std.debug.print("Parsing declaration on line {}\n", .{self.currentToken().line});
     var declaration: AstNode = .init(.Declaration, "");
     try declaration.addChild(allocator, identifier);
 
@@ -243,7 +264,19 @@ fn parseDeclaration(self: *Self, allocator: std.mem.Allocator, identifier: AstNo
         const type_node = try self.parseType(allocator);
         try declaration.addChild(allocator, type_node);
 
+        std.debug.print("Parsed '{s}' type in declaration on line {} in column {}\n", .{
+            self.currentToken().value,
+            self.currentToken().line,
+            self.currentToken().column,
+        });
+
         if (self.match(.Assignment)) {
+            std.debug.print("Assignment declaration current token: '{s}' of type '{s}' on line {} in column {}\n", .{
+                self.currentToken().value,
+                @tagName(self.currentToken().type),
+                self.currentToken().line,
+                self.currentToken().column,
+            });
             // Without assignment, this is a type scope alias instead of a variable
             const expression = try self.parseExpression(allocator);
             try declaration.addChild(allocator, expression);
@@ -256,6 +289,7 @@ fn parseDeclaration(self: *Self, allocator: std.mem.Allocator, identifier: AstNo
 /// Assignment is just two expressions surrounding an equal sign:
 /// `expression = expression`
 fn parseAssignment(self: *Self, allocator: std.mem.Allocator, left_expr: AstNode) !AstNode {
+    std.debug.print("Parsing assignment on line {}\n", .{self.currentToken().line});
     var assignment: AstNode = .init(.Assignment, "");
     try assignment.addChild(allocator, left_expr);
 
@@ -278,7 +312,7 @@ fn parseExpression(self: *Self, allocator: std.mem.Allocator) !AstNode {
 fn parseLogicalOr(self: *Self, allocator: std.mem.Allocator) !AstNode {
     var expression = try self.parseLogicalAnd(allocator);
     while (self.check(.Or)) {
-        var op: AstNode = .init(.BinaryExpr, self.current_token.value);
+        var op: AstNode = .init(.BinaryExpr, self.currentToken().value);
         self.advance();
         const right_expr = try self.parseLogicalAnd(allocator);
         try op.addChild(allocator, expression);
@@ -292,7 +326,7 @@ fn parseLogicalOr(self: *Self, allocator: std.mem.Allocator) !AstNode {
 fn parseLogicalAnd(self: *Self, allocator: std.mem.Allocator) !AstNode {
     var expression = try self.parseEquality(allocator);
     while (self.check(.And)) {
-        var op: AstNode = .init(.BinaryExpr, self.current_token.value);
+        var op: AstNode = .init(.BinaryExpr, self.currentToken().value);
         self.advance();
         const right_expr = try self.parseEquality(allocator);
         try op.addChild(allocator, expression);
@@ -306,7 +340,7 @@ fn parseLogicalAnd(self: *Self, allocator: std.mem.Allocator) !AstNode {
 fn parseEquality(self: *Self, allocator: std.mem.Allocator) !AstNode {
     var expression = try self.parseComparison(allocator);
     while (self.check(.Equal) or self.check(.NotEqual)) {
-        var op: AstNode = .init(.BinaryExpr, self.current_token.value);
+        var op: AstNode = .init(.BinaryExpr, self.currentToken().value);
         self.advance();
         const right_expr = try self.parseComparison(allocator);
         try op.addChild(allocator, expression);
@@ -320,7 +354,7 @@ fn parseEquality(self: *Self, allocator: std.mem.Allocator) !AstNode {
 fn parseComparison(self: *Self, allocator: std.mem.Allocator) !AstNode {
     var expression = try self.parseAddition(allocator);
     while (self.check(.LessThan) or self.check(.GreaterThan) or self.check(.LessEqual) or self.check(.GreaterEqual)) {
-        var op: AstNode = .init(.BinaryExpr, self.current_token.value);
+        var op: AstNode = .init(.BinaryExpr, self.currentToken().value);
         self.advance();
         const right_expr = try self.parseAddition(allocator);
         try op.addChild(allocator, expression);
@@ -334,7 +368,7 @@ fn parseComparison(self: *Self, allocator: std.mem.Allocator) !AstNode {
 fn parseAddition(self: *Self, allocator: std.mem.Allocator) !AstNode {
     var expression = try self.parseMultiplication(allocator);
     while (self.check(.Plus) or self.check(.Minus)) {
-        var op: AstNode = .init(.BinaryExpr, self.current_token.value);
+        var op: AstNode = .init(.BinaryExpr, self.currentToken().value);
         self.advance();
         const right_expr = try self.parseMultiplication(allocator);
         try op.addChild(allocator, expression);
@@ -348,7 +382,7 @@ fn parseAddition(self: *Self, allocator: std.mem.Allocator) !AstNode {
 fn parseMultiplication(self: *Self, allocator: std.mem.Allocator) !AstNode {
     var expression = try self.parseUnary(allocator);
     while (self.check(.Asterisk) or self.check(.Slash)) {
-        var op: AstNode = .init(.BinaryExpr, self.current_token.value);
+        var op: AstNode = .init(.BinaryExpr, self.currentToken().value);
         self.advance();
         const right_expr = try self.parseUnary(allocator);
         try op.addChild(allocator, expression);
@@ -361,7 +395,7 @@ fn parseMultiplication(self: *Self, allocator: std.mem.Allocator) !AstNode {
 
 fn parseUnary(self: *Self, allocator: std.mem.Allocator) !AstNode {
     if (self.check(.Plus) or self.check(.Minus) or self.check(.Not)) {
-        var expression: AstNode = .init(.UnaryExpr, self.current_token.value);
+        var expression: AstNode = .init(.UnaryExpr, self.currentToken().value);
         self.advance();
         const operand = try self.parseUnary(allocator);
         try expression.addChild(allocator, operand);
@@ -371,7 +405,7 @@ fn parseUnary(self: *Self, allocator: std.mem.Allocator) !AstNode {
     return try self.parsePostfix(allocator);
 }
 
-fn parsePostfix(self: *Self, allocator: std.mem.Allocator) !AstNode {
+fn parsePostfix(self: *Self, allocator: std.mem.Allocator) anyerror!AstNode {
     var expression = try self.parsePrimary(allocator);
     while (self.check(.Dot) or self.check(.LeftBracket)) {
         if (self.check(.Dot)) {
@@ -384,8 +418,21 @@ fn parsePostfix(self: *Self, allocator: std.mem.Allocator) !AstNode {
             continue;
         }
 
-        if (self.check(.LeftBracket)) {
-            // TODO - parse parameters
+        if (self.match(.LeftBracket)) {
+            var parameters: AstNode = .init(.CallParameterList, "");
+            while (!self.check(.RightBracket)) {
+                const param_expr = try self.parseExpression(allocator);
+                try parameters.addChild(allocator, param_expr);
+
+                if (self.check(.Comma)) {
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+            try self.expect(.RightBracket);
+            try expression.addChild(allocator, parameters);
+            continue;
         }
     }
 
@@ -394,18 +441,34 @@ fn parsePostfix(self: *Self, allocator: std.mem.Allocator) !AstNode {
 
 /// A primary is an identifier, a number literal, or a left bracket in which another expression resides
 fn parsePrimary(self: *Self, allocator: std.mem.Allocator) anyerror!AstNode {
+    std.debug.print("Parsing primary '{s}' of type '{s}' on line {} in column {}\n", .{
+        self.currentToken().value,
+        @tagName(self.currentToken().type),
+        self.currentToken().line,
+        self.currentToken().column,
+    });
     if (self.check(.Identifier)) {
         return self.parseIdentifier();
     } else if (self.check(.Number)) {
         return self.parseNumber();
     } else if (self.check(.LeftBracket)) {
+        // Check if the bracket signifies a value scope or a group expression
+        // Value scopes match:
+        // - () {}
+        // - (ident: type [, ident: type]) {}
+        // We only need to check the next 2 tokens to know if it's a value scope
+        if ((self.checkAt(.RightBracket, 1) and self.checkAt(.LeftBrace, 2)) or (self.checkAt(.Identifier, 1) and self.checkAt(.Colon, 2))) {
+            return try self.parseValueScope(allocator);
+        }
+
+        // Otherwise, just parse the contents of the brackets like a normal expression
         self.advance();
         const expression = try self.parseExpression(allocator);
         try self.expect(.RightBracket);
         return expression;
     }
 
-    std.debug.print("Unknown primary '{s}'\n", .{self.current_token.value});
+    std.debug.print("Unknown primary '{s}'\n", .{self.currentToken().value});
     return ParseError.InvalidSyntax;
 }
 
@@ -414,7 +477,7 @@ fn parseIdentifier(self: *Self) !AstNode {
         return ParseError.UnexpectedToken;
     }
 
-    const identifier: AstNode = .init(.Identifier, self.current_token.value);
+    const identifier: AstNode = .init(.Identifier, self.currentToken().value);
     self.advance();
     return identifier;
 }
@@ -424,15 +487,15 @@ fn parseNumber(self: *Self) !AstNode {
         return ParseError.UnexpectedToken;
     }
 
-    const number: AstNode = .init(.Number, self.current_token.value);
+    const number: AstNode = .init(.Number, self.currentToken().value);
     self.advance();
     return number;
 }
 
 fn parseType(self: *Self, allocator: std.mem.Allocator) !AstNode {
-    if (self.check(.Identifier) or self.current_token.type.isType()) {
+    if (self.check(.Identifier) or self.currentToken().type.isType()) {
         // The type is either a fundamental or an alias name
-        const type_ident: AstNode = .init(.Type, self.current_token.value);
+        const type_ident: AstNode = .init(.Type, self.currentToken().value);
         self.advance();
         return type_ident;
     } else if (self.check(.LeftBrace)) {
@@ -442,7 +505,7 @@ fn parseType(self: *Self, allocator: std.mem.Allocator) !AstNode {
 
     std.debug.print(
         "Expected identifier, fundamental, or type scope for type, not '{s}'\n",
-        .{self.current_token.value},
+        .{self.currentToken().value},
     );
     return ParseError.UnexpectedToken;
 }
@@ -451,12 +514,14 @@ fn parseParameterList(self: *Self, allocator: std.mem.Allocator) !AstNode {
     self.advance();
     var list: AstNode = .init(.ParameterList, "");
     while (!self.check(.RightBracket)) {
-        if (self.check(.Comma)) {
-            self.advance();
-        }
-
         const parameter = try self.parseParameter(allocator);
         try list.addChild(allocator, parameter);
+
+        if (self.check(.Comma)) {
+            self.advance();
+        } else {
+            break;
+        }
     }
 
     self.expect(.RightBracket) catch |err| {
@@ -467,7 +532,7 @@ fn parseParameterList(self: *Self, allocator: std.mem.Allocator) !AstNode {
 }
 
 fn parseParameter(self: *Self, allocator: std.mem.Allocator) !AstNode {
-    var parameter: AstNode = .init(allocator, "");
+    var parameter: AstNode = .init(.Parameter, "");
 
     if (!self.check(.Identifier)) {
         std.debug.print("Expected identifier in parameter\n", .{});

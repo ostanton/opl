@@ -1,5 +1,4 @@
 const std = @import("std");
-const Lexer = @import("lexer.zig");
 const Parser = @import("parser2.zig");
 const Semantics = @import("semantics.zig");
 
@@ -77,14 +76,9 @@ pub fn main() !void {
 
     std.debug.print("\n", .{});
 
-    std.debug.print("--- LEXING ---\n", .{});
-    var lexer: Lexer = try .init(buffer);
-    std.debug.print("--- LEXING FINISHED ---\n", .{});
-
-    std.debug.print("\n", .{});
-
     std.debug.print("--- PARSING ---\n", .{});
-    var parser: Parser = .init(&lexer);
+    var parser: Parser = try .init(allocator, buffer);
+    defer Parser.deinit();
     var root_node = parser.parse(allocator) catch |err| {
         std.debug.print("Parse error: {}\n", .{err});
         return;

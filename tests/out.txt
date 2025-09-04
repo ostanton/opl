@@ -1,5 +1,16 @@
 ^-- Program
     |-- Statement
+    |   ^-- Identifier: "a"
+    |-- Statement
+    |   ^-- Number: "5"
+    |-- Statement
+    |   ^-- Identifier: "etc"
+    |-- Statement
+    |   ^-- Declaration
+    |       |-- Identifier: "test"
+    |       |-- Type: "f32"
+    |       ^-- Number: "5"
+    |-- Statement
     |   ^-- Declaration
     |       |-- Identifier: "Point"
     |       ^-- TypeScope
@@ -34,7 +45,46 @@
     |-- Statement
     |   ^-- Declaration
     |       |-- Identifier: "p"
-    |       ^-- Type: "Point"
+    |       |-- Type: "Point"
+    |       ^-- ValueScope
+    |           |-- ParameterList
+    |           |   ^-- Parameter
+    |           |       |-- Identifier: "a"
+    |           |       ^-- Type: "u8"
+    |           |-- Statement
+    |           |   ^-- Assignment
+    |           |       |-- Identifier: "x"
+    |           |       ^-- BinaryExpr: "*"
+    |           |           |-- Number: "50"
+    |           |           ^-- Identifier: "a"
+    |           ^-- Statement
+    |               ^-- Assignment
+    |                   |-- Identifier: "y"
+    |                   ^-- BinaryExpr: "*"
+    |                       |-- Identifier: "x"
+    |                       ^-- Number: "2"
+    |-- Statement
+    |   ^-- LocalAccess
+    |       |-- LocalAccess
+    |       |   |-- Identifier: "p"
+    |       |   |   ^-- CallParameterList
+    |       |   |       |-- Number: "5"
+    |       |   |       |-- Identifier: "test"
+    |       |   |       ^-- BinaryExpr: "+"
+    |       |   |           |-- Number: "5"
+    |       |   |           ^-- BinaryExpr: "/"
+    |       |   |               |-- BinaryExpr: "*"
+    |       |   |               |   |-- Number: "2"
+    |       |   |               |   ^-- Number: "6"
+    |       |   |               ^-- BinaryExpr: "-"
+    |       |   |                   |-- Number: "5"
+    |       |   |                   ^-- Number: "2"
+    |       |   |-- Identifier: "x"
+    |       |   ^-- CallParameterList
+    |       |       ^-- Number: "2"
+    |       |-- Identifier: "y"
+    |       ^-- CallParameterList
+    |           ^-- Identifier: "aa"
     |-- Statement
     |   ^-- Assignment
     |       |-- LocalAccess

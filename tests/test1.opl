@@ -1,4 +1,6 @@
 // Defining a Point structure and using it in a variable
+a;5;etc;
+test: f32 = 5;
 
 Point: {
     x: f32 = 0;
@@ -7,11 +9,14 @@ Point: {
 
 p: Point = 1 + -5 / 3 - 2 * -5 - -4;
 
-// value scopes are not implemented yet!
-p: Point;// = {
-    //x = 50;
-    //y = x * 2;
-//};
+p: Point = (a: u8) {
+    x = 50 * a;
+    y = x * 2;
+};
+
+// TODO - x and y call parameter list nodes are not children of them!
+// They're instead alongside them as children of the local access nodes!
+p(5, test, 5 + 2 * 6 / (5 - 2)).x(2).y(aa);
 
 p.x.y = 100;
 

@@ -2,8 +2,10 @@ const std = @import("std");
 
 input: []const u8,
 pos: usize,
-line: u32,
-column: u32,
+line: usize,
+column: usize,
+// Buffer of the current token (index 0) + 2 ahead
+tokens: [3]Token,
 
 pub const TokenType = enum {
     Identifier,
@@ -21,7 +23,6 @@ pub const TokenType = enum {
     F32,
     F64,
     Bool,
-    Void,
     Scope,
 
     // Operators
@@ -55,6 +56,10 @@ pub const TokenType = enum {
     RightShift,
     Caret,
 
+    // Identifiers
+    If,
+    For,
+
     // Other
     EoF,
     Invalid,
@@ -67,15 +72,52 @@ pub const TokenType = enum {
 pub const Token = struct {
     type: TokenType,
     value: []const u8,
-    line: u32,
-    column: u32,
+    line: usize,
+    column: usize,
+
+    const invalid: Token = .init(.Invalid, "", 0, 0);
+
+    pub fn init(token_type: TokenType, value: []const u8, line: usize, column: usize) Token {
+        return .{
+            .type = token_type,
+            .value = value,
+            .line = line,
+            .column = column,
+        };
+    }
 };
 
 const Self = @This();
-var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-var keywords = std.StringHashMap(TokenType).init(gpa.allocator());
+var keywords: std.StringHashMap(TokenType) = undefined;
 
-pub fn init(input: []const u8) !Self {
+pub fn init(allocator: std.mem.Allocator, input: []const u8) !Self {
+    initKeywords(allocator) catch |err| {
+        std.debug.print("Failed to initialise keywords: {}\n", .{err});
+        return err;
+    };
+
+    var self: Self = .{
+        .input = input,
+        .pos = 0,
+        .line = 1,
+        .column = 1,
+        .tokens = .{ .invalid, .invalid, .invalid },
+    };
+
+    // Prime the first 3 tokens for use
+    for (0..self.tokens.len) |_| {
+        _ = self.advance();
+    }
+
+    return self;
+}
+
+pub fn deinit() void {
+    keywords.deinit();
+}
+
+fn initKeywords(allocator: std.mem.Allocator) !void {
+    keywords = .init(allocator);
     try keywords.put("u8", .U8);
     try keywords.put("u16", .U16);
     try keywords.put("u32", .U32);
@@ -87,179 +129,167 @@ pub fn init(input: []const u8) !Self {
     try keywords.put("f32", .F32);
     try keywords.put("f64", .F64);
     try keywords.put("bool", .Bool);
-    try keywords.put("void", .Void);
     try keywords.put("scope", .Scope);
-
-    return .{
-        .input = input,
-        .pos = 0,
-        .line = 1,
-        .column = 1,
-    };
+    try keywords.put("if", .If);
+    try keywords.put("for", .For);
+    try keywords.put("and", .And);
+    try keywords.put("or", .Or);
 }
 
-pub fn nextToken(self: *Self) Token {
+pub fn advance(self: *Self) Token {
     self.skipWhitespace();
 
+    var result: Token = .invalid;
+    defer {
+        // Move tokens in buffer down by one, and append this new token to the end
+        self.tokens[0] = self.tokens[1];
+        self.tokens[1] = self.tokens[2];
+        self.tokens[2] = result;
+    }
+
     if (self.pos >= self.input.len) {
-        return .{
+        // Reached the end of the file
+        result = .{
             .type = .EoF,
-            .value = "EOF",
+            .value = "End of File",
             .line = self.line,
             .column = self.column,
         };
+        return result;
     }
 
     const char = self.input[self.pos];
 
     switch (char) {
-        else => {},
+        ';' => result = self.makeToken(.Semicolon, ";"),
+        ':' => result = self.makeToken(.Colon, ":"),
+        ',' => result = self.makeToken(.Comma, ","),
+        '.' => result = self.makeToken(.Dot, "."),
+        '(' => result = self.makeToken(.LeftBracket, "("),
+        ')' => result = self.makeToken(.RightBracket, ")"),
+        '{' => result = self.makeToken(.LeftBrace, "{"),
+        '}' => result = self.makeToken(.RightBrace, "}"),
+        '+' => result = self.makeToken(.Plus, "+"),
+        '-' => result = self.makeToken(.Minus, "-"),
+        '*' => result = self.makeToken(.Asterisk, "*"),
+        '/' => result = self.makeToken(.Slash, "/"),
+        '?' => result = self.makeToken(.Question, "?"),
+        '&' => result = self.makeToken(.Ampersand, "&"),
+        '|' => result = self.makeToken(.Pipe, "|"),
+        '^' => result = self.makeToken(.Caret, "^"),
         '=' => {
-            if (self.peek() == '=') {
+            if (self.peekChar() == '=') {
                 self.pos += 2;
                 self.column += 2;
-                return .{
+                result = .{
                     .type = .Equal,
                     .value = "==",
                     .line = self.line,
                     .column = self.column - 2,
                 };
+            } else {
+                result = self.makeToken(.Assignment, "=");
             }
-            return self.makeToken(.Assignment, "=");
         },
-        ';' => return self.makeToken(.Semicolon, ";"),
-        ':' => return self.makeToken(.Colon, ":"),
-        ',' => return self.makeToken(.Comma, ","),
-        '.' => return self.makeToken(.Dot, "."),
-        '(' => return self.makeToken(.LeftBracket, "("),
-        ')' => return self.makeToken(.RightBracket, ")"),
-        '{' => return self.makeToken(.LeftBrace, "{"),
-        '}' => return self.makeToken(.RightBrace, "}"),
-        '+' => return self.makeToken(.Plus, "+"),
-        '-' => return self.makeToken(.Minus, "-"),
-        '*' => return self.makeToken(.Asterisk, "*"),
-        '/' => return self.makeToken(.Slash, "/"),
-        '&' => {
-            if (self.peek() == '&') {
-                self.pos += 2;
-                self.column += 2;
-                return .{
-                    .type = .And,
-                    .value = "&&",
-                    .line = self.line,
-                    .column = self.column - 2,
-                };
-            }
-            return self.makeToken(.Ampersand, "&");
-        },
-        '|' => {
-            if (self.peek() == '|') {
-                self.pos += 2;
-                self.column += 2;
-                return .{
-                    .type = .Or,
-                    .value = "||",
-                    .line = self.line,
-                    .column = self.column - 2,
-                };
-            }
-            return self.makeToken(.Pipe, "|");
-        },
-        '^' => return self.makeToken(.Caret, "^"),
         '!' => {
-            if (self.peek() == '=') {
+            if (self.peekChar() == '=') {
                 self.pos += 2;
                 self.column += 2;
-                return .{
+                result = .{
                     .type = .NotEqual,
                     .value = "!=",
                     .line = self.line,
                     .column = self.column - 2,
                 };
+            } else {
+                result = self.makeToken(.Not, "!");
             }
-            return self.makeToken(.Not, "!");
         },
         '<' => {
-            if (self.peek() == '=') {
+            if (self.peekChar() == '=') {
                 self.pos += 2;
                 self.column += 2;
-                return .{
+                result = .{
                     .type = .LessEqual,
                     .value = "<=",
                     .line = self.line,
-                    .column = self.column - 2,
+                    .column = self.column,
                 };
-            }
-            if (self.peek() == '<') {
+            } else if (self.peekChar() == '<') {
                 self.pos += 2;
                 self.column += 2;
-                return .{
+                result = .{
                     .type = .LeftShift,
                     .value = "<<",
                     .line = self.line,
-                    .column = self.column - 2,
+                    .column = self.column,
                 };
+            } else {
+                result = self.makeToken(.LessThan, "<");
             }
-            return self.makeToken(.LessThan, "<");
         },
         '>' => {
-            if (self.peek() == '=') {
+            if (self.peekChar() == '=') {
                 self.pos += 2;
                 self.column += 2;
-                return .{
+                result = .{
                     .type = .GreaterEqual,
                     .value = ">=",
                     .line = self.line,
-                    .column = self.column - 2,
+                    .column = self.column,
                 };
-            }
-            if (self.peek() == '>') {
+            } else if (self.peekChar() == '>') {
                 self.pos += 2;
                 self.column += 2;
-                return .{
+                result = .{
                     .type = .RightShift,
                     .value = ">>",
                     .line = self.line,
-                    .column = self.column - 2,
+                    .column = self.column,
                 };
+            } else {
+                result = self.makeToken(.GreaterThan, ">");
             }
-            return self.makeToken(.GreaterThan, ">");
         },
-        '?' => return self.makeToken(.Question, "?"),
+        else => {
+            if (self.readNumber(char)) |token| {
+                result = token;
+            } else if (self.readIdentifier(char)) |token| {
+                result = token;
+            }
+        },
     }
 
-    if (std.ascii.isDigit(char)) {
-        return self.readNumber();
-    }
-
-    if (std.ascii.isAlphabetic(char)) {
-        return self.readIdentifier();
-    }
-
-    return .{
-        .type = .Invalid,
-        .value = "",
-        .line = self.line,
-        .column = self.column,
-    };
+    return result;
 }
 
-fn peek(self: Self) ?u8 {
-    return self.peekAmount(1);
+/// Peeks at the token at the offset (0 being the current token)
+pub fn peekAt(self: Self, offset: usize) Token {
+    if (offset >= self.tokens.len) {
+        return .invalid;
+    }
+
+    return self.tokens[offset];
 }
 
-fn peekAmount(self: Self, amount: usize) ?u8 {
-    if (self.pos + amount >= self.input.len) {
+/// Peeks at the next token
+pub fn peek(self: Self) Token {
+    return self.peekAt(1);
+}
+
+fn peekChar(self: Self) ?u8 {
+    if (self.pos >= self.input.len) {
         return null;
     }
-    return self.input[self.pos + amount];
+
+    return self.input[self.pos + 1];
 }
 
-fn makeToken(self: *Self, tokenType: TokenType, value: []const u8) Token {
+fn makeToken(self: *Self, token_type: TokenType, value: []const u8) Token {
     self.pos += 1;
     self.column += 1;
     return .{
-        .type = tokenType,
+        .type = token_type,
         .value = value,
         .line = self.line,
         .column = self.column - 1,
@@ -268,7 +298,7 @@ fn makeToken(self: *Self, tokenType: TokenType, value: []const u8) Token {
 
 fn skipWhitespace(self: *Self) void {
     while (self.pos < self.input.len) {
-        const char: u8 = self.input[self.pos];
+        const char = self.input[self.pos];
 
         if (std.ascii.isWhitespace(char)) {
             if (char == '\n') {
@@ -277,6 +307,7 @@ fn skipWhitespace(self: *Self) void {
             } else {
                 self.column += 1;
             }
+
             self.pos += 1;
         } else if (char == '/' and self.pos + 1 < self.input.len and self.input[self.pos + 1] == '/') {
             self.pos += 2;
@@ -303,6 +334,7 @@ fn skipWhitespace(self: *Self) void {
                 } else {
                     self.column += 1;
                 }
+
                 self.pos += 1;
             }
         } else {
@@ -311,9 +343,13 @@ fn skipWhitespace(self: *Self) void {
     }
 }
 
-fn readNumber(self: *Self) Token {
+fn readNumber(self: *Self, char: u8) ?Token {
+    if (!std.ascii.isDigit(char)) {
+        return null;
+    }
+
     const start = self.pos;
-    const startCol = self.column;
+    const start_column = self.column;
 
     while (self.pos < self.input.len and (std.ascii.isDigit(self.input[self.pos]) or self.input[self.pos] == '.')) {
         self.pos += 1;
@@ -324,13 +360,17 @@ fn readNumber(self: *Self) Token {
         .type = .Number,
         .value = self.input[start..self.pos],
         .line = self.line,
-        .column = startCol,
+        .column = start_column,
     };
 }
 
-fn readIdentifier(self: *Self) Token {
+fn readIdentifier(self: *Self, char: u8) ?Token {
+    if (!std.ascii.isAlphanumeric(char)) {
+        return null;
+    }
+
     const start = self.pos;
-    const startCol = self.column;
+    const start_column = self.column;
 
     while (self.pos < self.input.len and (std.ascii.isAlphanumeric(self.input[self.pos]) or self.input[self.pos] == '_')) {
         self.pos += 1;
@@ -338,15 +378,15 @@ fn readIdentifier(self: *Self) Token {
     }
 
     const value = self.input[start..self.pos];
-    var tokenType = TokenType.Identifier;
+    var token_type: TokenType = .Identifier;
     if (keywords.get(value)) |t| {
-        tokenType = t;
+        token_type = t;
     }
 
     return .{
-        .type = tokenType,
+        .type = token_type,
         .value = value,
         .line = self.line,
-        .column = startCol,
+        .column = start_column,
     };
 }
