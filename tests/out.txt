@@ -64,34 +64,41 @@
     |                       |-- Identifier: "x"
     |                       ^-- Number: "2"
     |-- Statement
-    |   ^-- LocalAccess
+    |   ^-- ScopeCall
     |       |-- LocalAccess
-    |       |   |-- Identifier: "p"
+    |       |   |-- ScopeCall
+    |       |   |   |-- LocalAccess
+    |       |   |   |   |-- ScopeCall
+    |       |   |   |   |   |-- Identifier: "p"
+    |       |   |   |   |   ^-- CallParameterList
+    |       |   |   |   |       |-- Number: "5"
+    |       |   |   |   |       |-- Identifier: "test"
+    |       |   |   |   |       ^-- BinaryExpr: "+"
+    |       |   |   |   |           |-- Number: "5"
+    |       |   |   |   |           ^-- BinaryExpr: "/"
+    |       |   |   |   |               |-- BinaryExpr: "*"
+    |       |   |   |   |               |   |-- Number: "2"
+    |       |   |   |   |               |   ^-- Number: "6"
+    |       |   |   |   |               ^-- BinaryExpr: "-"
+    |       |   |   |   |                   |-- Number: "5"
+    |       |   |   |   |                   ^-- Number: "2"
+    |       |   |   |   ^-- Identifier: "x"
     |       |   |   ^-- CallParameterList
-    |       |   |       |-- Number: "5"
-    |       |   |       |-- Identifier: "test"
-    |       |   |       ^-- BinaryExpr: "+"
-    |       |   |           |-- Number: "5"
-    |       |   |           ^-- BinaryExpr: "/"
-    |       |   |               |-- BinaryExpr: "*"
-    |       |   |               |   |-- Number: "2"
-    |       |   |               |   ^-- Number: "6"
-    |       |   |               ^-- BinaryExpr: "-"
-    |       |   |                   |-- Number: "5"
-    |       |   |                   ^-- Number: "2"
-    |       |   |-- Identifier: "x"
-    |       |   ^-- CallParameterList
-    |       |       ^-- Number: "2"
-    |       |-- Identifier: "y"
+    |       |   |       ^-- Number: "2"
+    |       |   ^-- Identifier: "y"
     |       ^-- CallParameterList
     |           ^-- Identifier: "aa"
     |-- Statement
     |   ^-- Assignment
     |       |-- LocalAccess
-    |       |   |-- LocalAccess
-    |       |   |   |-- Identifier: "p"
-    |       |   |   ^-- Identifier: "x"
-    |       |   ^-- Identifier: "y"
+    |       |   |-- ScopeCall
+    |       |   |   |-- LocalAccess
+    |       |   |   |   |-- LocalAccess
+    |       |   |   |   |   |-- Identifier: "p"
+    |       |   |   |   |   ^-- Identifier: "x"
+    |       |   |   |   ^-- Identifier: "y"
+    |       |   |   ^-- CallParameterList
+    |       |   ^-- Identifier: "f"
     |       ^-- Number: "100"
     ^-- Statement
         ^-- Declaration

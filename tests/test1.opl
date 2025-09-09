@@ -18,6 +18,6 @@ p: Point = (a: u8) {
 // They're instead alongside them as children of the local access nodes!
 p(5, test, 5 + 2 * 6 / (5 - 2)).x(2).y(aa);
 
-p.x.y = 100;
+p.x.y().f = 100;
 
 result: u8 = 0;

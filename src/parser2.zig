@@ -431,7 +431,10 @@ fn parsePostfix(self: *Self, allocator: std.mem.Allocator) anyerror!AstNode {
                 }
             }
             try self.expect(.RightBracket);
-            try expression.addChild(allocator, parameters);
+            var scope_call: AstNode = .init(.ScopeCall, "");
+            try scope_call.addChild(allocator, expression);
+            try scope_call.addChild(allocator, parameters);
+            expression = scope_call;
             continue;
         }
     }
