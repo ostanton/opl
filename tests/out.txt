@@ -64,6 +64,29 @@
     |                       |-- Identifier: "x"
     |                       ^-- Number: "2"
     |-- Statement
+    |   ^-- Declaration
+    |       |-- Identifier: "cond"
+    |       |-- Type: "bool"
+    |       ^-- BinaryExpr: "or"
+    |           |-- BinaryExpr: ">="
+    |           |   |-- BinaryExpr: "/"
+    |           |   |   |-- LocalAccess
+    |           |   |   |   |-- Identifier: "p"
+    |           |   |   |   ^-- Identifier: "x"
+    |           |   |   ^-- Number: "4"
+    |           |   ^-- BinaryExpr: "/"
+    |           |       |-- BinaryExpr: "*"
+    |           |       |   |-- BinaryExpr: "-"
+    |           |       |   |   |-- Number: "4"
+    |           |       |   |   ^-- Number: "5"
+    |           |       |   ^-- Number: "2"
+    |           |       ^-- Number: "67"
+    |           ^-- BinaryExpr: "=="
+    |               |-- LocalAccess
+    |               |   |-- Identifier: "p"
+    |               |   ^-- Identifier: "y"
+    |               ^-- Number: "2"
+    |-- Statement
     |   ^-- ScopeCall
     |       |-- LocalAccess
     |       |   |-- ScopeCall
